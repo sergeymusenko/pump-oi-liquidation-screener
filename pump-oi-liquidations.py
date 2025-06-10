@@ -647,7 +647,7 @@ if __name__ == "__main__":
 		logger = logging.getLogger(__name__)
 
 		# print start message
-		logger.info(f"START Pump/OI Screener, Ignore Top{marketCapTop} Cap")
+		logger.info(f"START Pump/OI/LIQ Screener, Ignore Top{marketCapTop} Cap")
 		if 'Price' in ScreenerEvents:
 			logger.info(f"Setting Pump: {alertPriceChange:.1f}% / {timeframePrice}s, Mode: {'LONG only' if longOnlyPrice else 'LONG/SHORT'}")
 		if 'OI' in ScreenerEvents:
