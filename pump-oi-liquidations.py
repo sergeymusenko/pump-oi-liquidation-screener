@@ -211,7 +211,7 @@ class PumpOIliquidationScreener:
 	async def _handle_messages_OKX(self, ws, exchange: str):
 		"""OKX websocket message handler"""
 		global pairsOKX, pairsOKXcontract, msgCountOKX, subscribedOKX, tickerBaseOKX, tickerSnapshotOKX, \
-			lastWarningOKX, time2resetOKX, lastPriceLIQ, pairsMaxPriceOKX, pairsMaxOIOKX, sideLIQ, alertPriceCh4ShortX
+			lastWarningOKX, time2resetOKX, lastPriceLIQ, pairsMaxPriceOKX, pairsMaxOIOKX, sideLIQ, alertPriceCh4ShortX, precisionPercent
 		async for message in ws:
 			TGmessage = False
 			msg = json.loads(message)
@@ -288,7 +288,9 @@ class PumpOIliquidationScreener:
 					# check Price changes:
 					priceBase = float(tickerBaseOKX[symbol]["lastPrice"])
 					price = float(tickerSnapshotOKX[symbol]["lastPrice"])
-					priceChange = 100 * (price - priceBase) / priceBase
+					precision = 0 if price>=10000 else 1 if price>=1000 else 6 if price<0.0001 else 4
+					priceChange = round(100 * (price - priceBase) / priceBase, precisionPercent)
+#					priceChange = 100 * (price - priceBase) / priceBase
 					priceChangeSign = sideMark['long'] if priceChange>0 else sideMark['short']
 					priceChangeSignTxt = '+' if priceChange>0 else '-'
 					x = 1. if priceChange >= 0 else alertPriceCh4ShortX # implement different settings for SHORT
@@ -306,10 +308,9 @@ class PumpOIliquidationScreener:
 						if counter <= maxMsgSameCoin:
 							URL = f"https://www.okx.com/ru/trade-swap/{symbol.lower()}-swap"
 							cgURL = f"https://www.coinglass.com/tv/ru/OKX_{symbol.upper()}-SWAP"
-							precision = 0 if price>=10000 else 1 if price>=1000 else 6 if price<0.0001 else 4
 							linkText = f"{sideMark['long'] if priceChangeSignTxt == '+' else sideMark['short']}{symbol[:-5]}"
 							price_str = f"{price:.{precision}f}"
-							TGmessage = self._format_telegram_message('PR', exchange, URL, cgURL, linkText, price_str, f"{priceChange:.1f}", priceChangeSignTxt, counter)
+							TGmessage = self._format_telegram_message('PR', exchange, URL, cgURL, linkText, price_str, f"{priceChange:.{precisionPercent}f}", priceChangeSignTxt, counter)
 
 			elif msg.get('arg', {}).get('channel') == 'open-interest':
 				for data in msg.get('data', {}):
@@ -345,7 +346,9 @@ class PumpOIliquidationScreener:
 					# check OI changes:
 					oiBase = float(tickerBaseOKX[symbol]['openInterest'])
 					oi = float(tickerSnapshotOKX[symbol]['openInterest'])
-					oiChange = 100 * (oi - oiBase) / oiBase
+					precision = 1
+					oiChange = round(100 * (oi - oiBase) / oiBase, precisionPercent)
+#					oiChange = 100 * (oi - oiBase) / oiBase
 					oiChangeSign = sideMark['long'] if oiChange>0 else sideMark['short']
 					oiChangeSignTxt = '+' if oiChange>0 else '-'
 					if not longOnlyOI:
@@ -364,7 +367,7 @@ class PumpOIliquidationScreener:
 							cgURL = f"https://www.coinglass.com/tv/ru/OKX_{symbol.upper()}"
 							linkText = f"{sideMark['long'] if oiChangeSignTxt == '+' else sideMark['short']}{symbol[:-10]}"
 							oi_str = megaKilo(oi)
-							TGmessage = self._format_telegram_message('OI', exchange, URL, cgURL, linkText, oi_str, f"{oiChange:.1f}", oiChangeSignTxt, counter)
+							TGmessage = self._format_telegram_message('OI', exchange, URL, cgURL, linkText, oi_str, f"{oiChange:.{precisionPercent}f}", oiChangeSignTxt, counter)
 
 			# send a notification (if not empty)
 			await self._notify(TGmessage)
@@ -393,7 +396,7 @@ class PumpOIliquidationScreener:
 		"""Bybit websocket message handler"""
 		global pairsBybit, msgCountBybit, subscribedBybit, tickerBaseBybit, tickerSnapshotBybit, \
 			lastWarningBybit, time2resetBybit, lastPriceLIQ, minLIQsizeUSD, sideLIQ, pairsMaxPriceBybit, \
-			pairsMaxOIBybit, alertPriceCh4ShortX
+			pairsMaxOIBybit, alertPriceCh4ShortX, precisionPercent
 		async for message in ws:
 			TGmessage = False
 			msg = json.loads(message)
@@ -479,7 +482,9 @@ class PumpOIliquidationScreener:
 					if 'Price' in ScreenerEvents:
 						priceBase = float(tickerBaseBybit[symbol]["lastPrice"])
 						price = float(tickerSnapshotBybit[symbol]["lastPrice"])
-						priceChange = 100 * (price - priceBase) / priceBase
+						precision = 0 if price>=10000 else 1 if price>=1000 else 6 if price<0.0001 else 4
+						priceChange = round(100 * (price - priceBase) / priceBase, precisionPercent) # fixed precision
+#						priceChange = 100 * (price - priceBase) / priceBase
 						priceChangeSign = sideMark['long'] if priceChange>0 else sideMark['short']
 						priceChangeSignTxt = '+' if priceChange>0 else '-'
 						x = 1. if priceChange >= 0 else alertPriceCh4ShortX # implement different settings for SHORT
@@ -497,16 +502,16 @@ class PumpOIliquidationScreener:
 							if counter <= maxMsgSameCoin:
 								URL = f"https://www.bybit.com/trade/usdt/{symbol}"
 								cgURL = f"https://www.coinglass.com/tv/ru/Bybit_{symbol.upper()}"
-								precision = 0 if price>=10000 else 1 if price>=1000 else 6 if price<0.0001 else 4
 								linkText = f"{sideMark['long'] if priceChangeSignTxt == '+' else sideMark['short']}{symbol[:-4]}"
 								price_str = f"{price:.{precision}f}"
-								TGmessage = self._format_telegram_message('PR', exchange, URL, cgURL, linkText, price_str, f"{priceChange:.1f}", priceChangeSignTxt, counter)
+								TGmessage = self._format_telegram_message('PR', exchange, URL, cgURL, linkText, price_str, f"{priceChange:.{precisionPercent}f}", priceChangeSignTxt, counter)
 
 					# check OI changes:
 					if 'OI' in ScreenerEvents:
 						oiBase = float(tickerBaseBybit[symbol]["openInterestValue"])
 						oi = float(tickerSnapshotBybit[symbol]["openInterestValue"])
-						oiChange = 100 * (oi - oiBase) / oiBase
+						oiChange = round(100 * (oi - oiBase) / oiBase, precisionPercent)
+#						oiChange = 100 * (oi - oiBase) / oiBase
 						oiChangeSign = sideMark['long'] if oiChange>0 else sideMark['short']
 						oiChangeSignTxt = '+' if oiChange>0 else '-'
 						if not longOnlyOI:
@@ -525,7 +530,7 @@ class PumpOIliquidationScreener:
 								cgURL = f"https://www.coinglass.com/tv/ru/Bybit_{symbol.upper()}"
 								linkText = f"{sideMark['long'] if oiChangeSignTxt == '+' else sideMark['short']}{symbol[:-4]}"
 								oi_str = megaKilo(oi)
-								TGmessage = self._format_telegram_message('OI', exchange, URL, cgURL, linkText, oi_str, f"{oiChange:.1f}", oiChangeSignTxt, counter)
+								TGmessage = self._format_telegram_message('OI', exchange, URL, cgURL, linkText, oi_str, f"{oiChange:.{precisionPercent}f}", oiChangeSignTxt, counter)
 
 			# send notification if not empty
 			await self._notify(TGmessage)

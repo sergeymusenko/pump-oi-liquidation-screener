@@ -39,6 +39,8 @@ marketCapTop = 30 # blacklist these coins by Capitalization
 minTurnover24h = 1_500_000. # min 24h volume >$1000/мин (lower subscriptions number)
 minLifeTime = 30*24*3600 # ignore too young coins
 
+precisionPercent = 1 # show percents with this precision: "99.9%"
+
 # Pump settings
 longOnlyPrice = False # if False will monitor Higher and Lower
 timeframePrice = 120 # 2min, track Price change in last N seconds (candle size)
