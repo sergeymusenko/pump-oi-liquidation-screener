@@ -24,7 +24,7 @@ ScreenerEvents = [ # screen these events, comment out to block
 ]
 
 coinBlacklistManual = [ # manually added to ignore
-	'ALCH',
+	'ALCH', 'AVAAI', 'GORK', 'USELESS',
 ]
 
 websocket_URLs = {
@@ -35,22 +35,23 @@ websocket_URLs = {
 longLogFile = 'logs/pump-oi-liquidations_history.log' # all time log
 loggerFile  = 'logs/pump-oi-liquidations.log' # session log
 
-marketCapTop = 30 # blacklist these coins by Capitalization
+marketCapTop = 3 # blacklist these coins by Capitalization
 minTurnover24h = 1_500_000. # min 24h volume >$1000/мин (lower subscriptions number)
 minLifeTime = 30*24*3600 # ignore too young coins
 
 precisionPercent = 1 # show percents with this precision: "99.9%"
 
 # Pump settings
-longOnlyPrice = False # if False will monitor Higher and Lower
+longOnlyPrice = True # if False will monitor Higher and Lower
 timeframePrice = 120 # 2min, track Price change in last N seconds (candle size)
-alertPriceChange = 2.5 # 2. # percents ### 1 message in timeframe!
-alertPriceCh4ShortX = 1.5 # x2 for SHORT, recommended: 10% in 20m
+alertPriceChange = 3. # 2. # percents ### 1 message in timeframe!
+alertPriceCh4ShortX = 1.6 # x2 for SHORT, recommended: 10% in 20m
+stepPrice = 0.3 # show if 2+ signal change >=
 
 # OI settings
 longOnlyOI = True # if False will monitor Higher and Lower
 timeframeOI = 900 # 15min, track OI change in last N seconds (candle size)
-alertOIchange = 6. # 5% min
+alertOIchange = 8. # 5% min
 
 # both OI/Price
 timeframeMsgCntOKX = 3_600 # each N seconds reset the counter

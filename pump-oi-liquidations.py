@@ -92,8 +92,8 @@ tickerBaseOKX = {} # compare changes with this
 tickerSnapshotOKX = {} # same structure as tickerBaseOKX
 lastWarningOKX = {} # symbol:timestamp
 time2resetOKX = {'OI':0, 'price':0, 'counter':0} # next time to reset candle
-pairsMaxPriceOKX = {} # show signal only if it is better then already saved here, max is valid only for time2reset*
-pairsMaxOIOKX = {} # show signal only if it is better then already saved here, max is valid only for time2reset*
+pairsMaxPriceOKX = {} # show signal only if change is better then already saved here, max is valid only for time2reset*
+pairsMaxOIOKX = {} # show signal only if change is better then already saved here, max is valid only for time2reset*
 msgCountOKX = {} # symbol:N coin message counter since reset, see below
 subscribedOKX = 0
 #buffers Bybit
@@ -102,8 +102,8 @@ tickerBaseBybit = {} # compare changes with this
 tickerSnapshotBybit = {} # same structure as tickerBaseBybit
 lastWarningBybit = {} # symbol:timestamp
 time2resetBybit = {'OI':0, 'price':0, 'counter':0} # next time to reset candle
-pairsMaxPriceBybit = {} # show signal only if it is better then already saved here, max is valid only for time2reset*
-pairsMaxOIBybit = {} # show signal only if it is better then already saved here, max is valid only for time2reset*
+pairsMaxPriceBybit = {} # show signal only if change is better then already saved here, max is valid only for time2reset*
+pairsMaxOIBybit = {} # show signal only if change is better then already saved here, max is valid only for time2reset*
 msgCountBybit = {} # symbol:N coin message counter since reset, see below
 subscribedBybit = 0
 #buffers LIQ
@@ -211,7 +211,8 @@ class PumpOIliquidationScreener:
 	async def _handle_messages_OKX(self, ws, exchange: str):
 		"""OKX websocket message handler"""
 		global pairsOKX, pairsOKXcontract, msgCountOKX, subscribedOKX, tickerBaseOKX, tickerSnapshotOKX, \
-			lastWarningOKX, time2resetOKX, lastPriceLIQ, pairsMaxPriceOKX, pairsMaxOIOKX, sideLIQ, alertPriceCh4ShortX, precisionPercent
+			lastWarningOKX, time2resetOKX, lastPriceLIQ, pairsMaxPriceOKX, pairsMaxOIOKX, sideLIQ, \
+			alertPriceCh4ShortX, stepPrice, precisionPercent
 		async for message in ws:
 			TGmessage = False
 			msg = json.loads(message)
@@ -249,7 +250,8 @@ class PumpOIliquidationScreener:
 						URL = f"https://www.okx.com/ru/trade-swap/{symbol.lower()}-swap"
 						cgURL = f"https://www.coinglass.com/tv/ru/OKX_{symbol.upper()}-SWAP"
 						precision = 0 if price>=10000 else 1 if price>=1000 else 6 if price<0.0001 else 4
-						linkText = f"{sideMark[side]}{symbol[:-5]}"
+						sideR = 'short' if side == 'long' else 'long' # reverse mark color
+						linkText = f"{sideMark[sideR]}{symbol[:-5]}"
 						price_str = f"{price:.{precision}f}"
 						nMark = f" 🧍{n}" if n > 1 else ''
 						TGmessage = self._format_telegram_message('LIQ', exchange, URL, cgURL, linkText, price_str, megaKilo(usd_size), '$', nMark, '', '')
@@ -301,6 +303,8 @@ class PumpOIliquidationScreener:
 						and priceChange > pairsMaxPriceOKX[symbol]:
 						if symbol not in msgCountOKX:
 							msgCountOKX[symbol] = 0
+						elif priceChange < pairsMaxPriceOKX[symbol] + stepPrice:
+							continue # not big enough
 						counter = msgCountOKX[symbol] = msgCountOKX[symbol] + 1
 						pairsMaxPriceOKX[symbol] = priceChange # may be abs
 						lastWarningOKX[symbol]['price'] = ts # omly 1 messsage in timeframePrice
@@ -396,7 +400,7 @@ class PumpOIliquidationScreener:
 		"""Bybit websocket message handler"""
 		global pairsBybit, msgCountBybit, subscribedBybit, tickerBaseBybit, tickerSnapshotBybit, \
 			lastWarningBybit, time2resetBybit, lastPriceLIQ, minLIQsizeUSD, sideLIQ, pairsMaxPriceBybit, \
-			pairsMaxOIBybit, alertPriceCh4ShortX, precisionPercent
+			pairsMaxOIBybit, alertPriceCh4ShortX, stepPrice, precisionPercent
 		async for message in ws:
 			TGmessage = False
 			msg = json.loads(message)
@@ -427,6 +431,7 @@ class PumpOIliquidationScreener:
 					URL = f"https://www.bybit.com/trade/usdt/{symbol}"
 					cgURL = f"https://www.coinglass.com/tv/ru/Bybit_{symbol.upper()}"
 					precision = 0 if price>=10000 else 1 if price>=1000 else 6 if price<0.0001 else 4
+					#sideR = 'short' if side == 'long' else 'long' # reverse mark color
 					linkText = f"{sideMark[side]}{symbol[:-4]}"
 					price_str = f"{price:.{precision}f}"
 					nMark = f" 🧍{n}" if n > 1 else ''
@@ -495,6 +500,8 @@ class PumpOIliquidationScreener:
 							and priceChange > pairsMaxPriceBybit[symbol]:
 							if symbol not in msgCountBybit:
 								msgCountBybit[symbol] = 0
+							elif priceChange < pairsMaxPriceBybit[symbol] + stepPrice:
+								continue # not big enough
 							counter = msgCountBybit[symbol] = msgCountBybit[symbol] + 1
 							pairsMaxPriceBybit[symbol] = priceChange # may be abs
 							lastWarningBybit[symbol]['price'] = ts
