@@ -154,14 +154,12 @@ class PumpOIliquidationScreener:
 		"""Exchanges Websocket connection/reconnection"""
 		global Exchanges
 		if exchange in Exchanges: # only if allowed in config
-#			async with websockets.connect(websocket_URLs[exchange], ping_timeout=50) as ws: # , ping_interval=None
-#				await self._subscribe_to_channel(ws, exchange)
 			while True: # reconnect loop
 				try:
-					# if recoonections:
-					# - websockets.connect(url, ping_interval=20, ping_timeout=10)
-					# - websockets.connect(url, extra_headers={"User-Agent": "Mozilla/5.0"})
-					async with websockets.connect(websocket_URLs[exchange], ping_interval=20, ping_timeout=90) as ws: # , ping_interval=None
+# if recoonections:
+# - websockets.connect(url, ping_interval=20, ping_timeout=10)
+# - websockets.connect(url, extra_headers={"User-Agent": "Mozilla/5.0"})
+					async with websockets.connect(websocket_URLs[exchange], ping_interval=20, ping_timeout=50) as ws: # , ping_interval=None
 						await self._subscribe_to_channel(ws, exchange)
 				except Exception as e:
 					logger.error(f"{exchange}: Reconnect in 5s, {e}")

@@ -17,7 +17,7 @@ __version__	= "0.2"
 __status__	= "dev"
 
 Exchanges = [
-#	'OKX',
+	'OKX',
 	'Bybit',
 	'BingX',
 ]
