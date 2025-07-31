@@ -41,10 +41,10 @@ def send_to_telegram(apiToken, chatID, message='', mode='HTML', print_exception=
 	# note: HTML must use entities instead '>' etc
 	if not apiToken or not chatID or not message:
 		return False
-	previewOtions = {} if preview else {'is_disabled': True}
+	previewOptions = {} if preview else {'is_disabled': True}
 	try:
 		apiURL = f'https://api.telegram.org/bot{apiToken}/sendMessage'
-		response = requests.post(apiURL, json={'chat_id':chatID, 'text':message, 'parse_mode':mode, 'link_preview_options':previewOtions })
+		response = requests.post(apiURL, json={'chat_id':chatID, 'text':message, 'parse_mode':mode, 'link_preview_options':previewOptions })
 		return response
 	except Exception as e:
 		if print_exception:

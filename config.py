@@ -17,8 +17,9 @@ __version__	= "0.2"
 __status__	= "dev"
 
 Exchanges = [
-	'OKX',
+#	'OKX',
 	'Bybit',
+	'BingX',
 ]
 
 ScreenerEvents = [ # screen these events, comment out to block
@@ -32,6 +33,7 @@ coinBlacklistManual = [ # manually added to ignore
 ]
 
 websocket_URLs = {
+	'BingX':	'wss://open-api-swap.bingx.com/swap-market',
 	'OKX':		'wss://ws.okx.com:8443/ws/v5/public',
 	'Bybit':	'wss://stream.bybit.com/v5/public/linear'
 }
@@ -48,7 +50,7 @@ precisionPercent = 1 # show percents with this precision: "99.9%"
 # Pump settings
 longOnlyPrice = True # if False will monitor Higher and Lower
 timeframePrice = 120 # 2min, track Price change in last N seconds (candle size)
-alertPriceChange = 3. # 2. # percents ### 1 message in timeframe!
+alertPriceChange = 2.5 # 2. # percents ### 1 message in timeframe!
 alertPriceCh4ShortX = 1.6 # x2 for SHORT, recommended: 10% in 20m
 stepPrice = 0.3 # show if 2+ signal change >=
 
@@ -58,6 +60,7 @@ timeframeOI = 900 # 15min, track OI change in last N seconds (candle size)
 alertOIchange = 8. # 5% min
 
 # both OI/Price
+timeframeMsgCntBingX = 3_600 # each N seconds reset the counter
 timeframeMsgCntOKX = 3_600 # each N seconds reset the counter
 timeframeMsgCntBybit = 3_600 # each N seconds reset the counter
 maxMsgSameCoin = 10 # show only firts N messags on same coin at same exchange
@@ -78,9 +81,10 @@ signalIcon = {
 	'LIQ':		'🔥', # 'LIQ'
 }
 exchangeMark = {
-	'OKX':		'🔵',
+	'BingX':	'🔵',
+	'OKX':		'⚫',
 	'Bybit':	'🟠',
-	'none':		'⚫'
+	'none':		'⚪'
 }
 sideMark = {
 	'long':		'🟢', # '🔺', # '⚪',

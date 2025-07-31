@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """\
 Pump / Open Interest / Liquidations Screener
+3 crypto exchanges: Bybit, OKX, BingX
 
 Лови все ПАМПЫ раньше 95% трейдеров, Щукин:
 	https://www.youtube.com/watch?v=etxktQKHee4
@@ -38,15 +39,16 @@ Check pair in realtime:
 		<CoinGlass> Cumulative Volume Delta (CVD)
 		<CoinGlass> Совокупные ликвидации
 Docs:
-	Bybit:	https://bybit-exchange.github.io/docs/v5/market/tickers - turnover24h
-			https://bybit-exchange.github.io/docs/v5/market/instrument - launchTime
-			https://bybit-exchange.github.io/docs/v5/websocket/public/ticker
-			https://bybit-exchange.github.io/docs/v5/websocket/public/all-liquidation
+	BingX:	https://bingx-api.github.io/docs/#/en-us/swapV2/socket/
 	OKX:	https://www.okx.com/docs-v5/en/#public-data-rest-api-get-index-tickers
 			https://www.okx.com/api/v5/public/instruments?instType=SWAP
 		 	https://www.okx.com/docs-v5/en/#public-data-websocket-index-tickers-channel
 			https://www.okx.com/docs-v5/en/#public-data-websocket-open-interest-channel
 			https://www.okx.com/docs-v5/en/#public-data-websocket-liquidation-orders-channel
+	Bybit:	https://bybit-exchange.github.io/docs/v5/market/tickers - turnover24h
+			https://bybit-exchange.github.io/docs/v5/market/instrument - launchTime
+			https://bybit-exchange.github.io/docs/v5/websocket/public/ticker
+			https://bybit-exchange.github.io/docs/v5/websocket/public/all-liquidation
 
 Telegram:
 	📊 price, 🔍 open interest, 🔥 liquidation
@@ -73,6 +75,7 @@ import aiohttp
 import json
 import logging
 import time
+import gzip
 from typing import Dict, List
 
 from lib.simple_telegram import *
@@ -84,7 +87,19 @@ if gethostname() in ['sereno', 'vostro']:
 	from config_local import *
 
 
+#buffers BingX
+pairsBingX = []
 coinBlacklist = [] # will get it from coingecko.com
+pairsBingXcontract = {}
+tickerBaseBingX = {} # compare changes with this
+tickerSnapshotBingX = {} # same structure as tickerBaseBingX
+lastWarningBingX = {} # symbol:timestamp
+time2resetBingX = {'OI':0, 'price':0, 'counter':0} # next time to reset candle
+pairsMaxPriceBingX = {} # show signal only if change is better then already saved here, max is valid only for time2reset*
+pairsMaxOIBingX = {} # show signal only if change is better then already saved here, max is valid only for time2reset*
+msgCountBingX = {} # symbol:N coin message counter since reset, see below
+subscribedBingX = 0
+
 #buffers OKX
 pairsOKX = []
 pairsOKXcontract = {}
@@ -96,6 +111,7 @@ pairsMaxPriceOKX = {} # show signal only if change is better then already saved 
 pairsMaxOIOKX = {} # show signal only if change is better then already saved here, max is valid only for time2reset*
 msgCountOKX = {} # symbol:N coin message counter since reset, see below
 subscribedOKX = 0
+
 #buffers Bybit
 pairsBybit = []
 tickerBaseBybit = {} # compare changes with this
@@ -106,6 +122,7 @@ pairsMaxPriceBybit = {} # show signal only if change is better then already save
 pairsMaxOIBybit = {} # show signal only if change is better then already saved here, max is valid only for time2reset*
 msgCountBybit = {} # symbol:N coin message counter since reset, see below
 subscribedBybit = 0
+
 #buffers LIQ
 lastPriceLIQ = {}
 
@@ -114,15 +131,21 @@ class PumpOIliquidationScreener:
 	def __init__(self):
 		False
 
+# COMMON section --------------------------------------------------------------------------------
 	async def start(self):
 		"""Start monitoring"""
-		global Exchange, pairsOKX, pairsOKXcontract, pairsBybit
+		global Exchange, pairsBingX, pairsOKX, pairsOKXcontract, pairsBybit
 		# get symbols
-		await self.getSymbolsOKX()
-		await self.getSymbolsOKXcontracts()
+		if 'OKX' in Exchanges:
+			await self.getSymbolsOKX()
+			await self.getSymbolsOKXcontracts()
+		# always get Bybit symbols, BingX uses pairsBybit as a filter by turnover24
 		await self.getSymbolsBybit()
+		if 'BingX' in Exchanges:
+			await self.getSymbolsBingX() # accept only pairs existing at Bybit, about 230 pairs
 		# subscribe Exchange websocket and listen
-		await asyncio.gather(
+		await asyncio.gather( # inside each call we will check if it is allowed in config
+			self._run_exchange_websocket('BingX'),
 			self._run_exchange_websocket('OKX'),
 			self._run_exchange_websocket('Bybit'),
 		)
@@ -130,10 +153,15 @@ class PumpOIliquidationScreener:
 	async def _run_exchange_websocket(self, exchange: str):
 		"""Exchanges Websocket connection/reconnection"""
 		global Exchanges
-		if exchange in Exchanges:
+		if exchange in Exchanges: # only if allowed in config
+#			async with websockets.connect(websocket_URLs[exchange], ping_timeout=50) as ws: # , ping_interval=None
+#				await self._subscribe_to_channel(ws, exchange)
 			while True: # reconnect loop
 				try:
-					async with websockets.connect(websocket_URLs[exchange], ping_timeout=50) as ws: # , ping_interval=None
+					# if recoonections:
+					# - websockets.connect(url, ping_interval=20, ping_timeout=10)
+					# - websockets.connect(url, extra_headers={"User-Agent": "Mozilla/5.0"})
+					async with websockets.connect(websocket_URLs[exchange], ping_interval=20, ping_timeout=90) as ws: # , ping_interval=None
 						await self._subscribe_to_channel(ws, exchange)
 				except Exception as e:
 					logger.error(f"{exchange}: Reconnect in 5s, {e}")
@@ -141,21 +169,37 @@ class PumpOIliquidationScreener:
 
 	async def _subscribe_to_channel(self, ws, exchange: str):
 		"""Subscribe to a websocket"""
-		global pairsOKX, pairsBybit
-		if exchange == 'OKX': # note: for OKX it's 2 different channels for Price and OI
-			# open interes, if not blocked
+		global pairsBingX, subscribedBingX, pairsOKX, pairsBybit
+
+		if exchange == 'BingX':
+			# prices, if available in config
+			if 'Price' in ScreenerEvents:
+				for i, _symbol in enumerate(pairsBingX):
+					await ws.send(json.dumps({
+						"id": f"sub_{i}",
+						"reqType": "sub",
+						"dataType": f"{_symbol}@lastPrice"
+					}))
+					if i > 0 and i % 10 == 0:
+						await asyncio.sleep(0.01)
+				subscribedBingX = 1
+				logger.info(f"{exchange}: subscribed, monitoring {len(pairsBingX)} pairs")
+				await self._handle_messages_BingX(ws, exchange) # set up a message handler
+
+		elif exchange == 'OKX': # note: for OKX it's 2 different channels for Price and OI
+			# open interes, if available in config
 			if 'OI' in ScreenerEvents:
-				await ws.send(json.dumps({ 
+				await ws.send(json.dumps({
 					"op": "subscribe",
 					"args": [{"channel": "open-interest", "instType": "SWAP", "instId": symbol} for symbol in pairsOKX]
 				}))
-			# prices, if not blocked
+			# prices, if available in config
 			if 'Price' in ScreenerEvents:
 				await ws.send(json.dumps({
 					"op": "subscribe",
 					"args": [{"channel": "index-tickers", "instId": symbol[:-5]} for symbol in pairsOKX] # no need -SWAP here!
 				}))
-			# liquidations, if not blocked
+			# liquidations, if available in config
 			if 'Liquidation' in ScreenerEvents:
 				await ws.send(json.dumps({
 					"op": "subscribe",
@@ -164,19 +208,111 @@ class PumpOIliquidationScreener:
 			await self._handle_messages_OKX(ws, exchange) # set up a message handler
 
 		elif exchange == 'Bybit': # for Bybit
-			# prices + open interes combined, if not blocked
+			# prices + open interes combined, if available in config
 			if 'OI' in ScreenerEvents or 'Price' in ScreenerEvents:
 				await ws.send(json.dumps({ # Price and OI in same channel
 					"op": "subscribe",
 					"args": [f"tickers.{symbol}" for symbol in pairsBybit]
 				}))
-			# liquidations, if not blocked
+			# liquidations, if available in config
 			if 'Liquidation' in ScreenerEvents:
 				await ws.send(json.dumps({ # Liquidations channel
 					"op": "subscribe",
 					"args": [f"allLiquidation.{symbol}" for symbol in pairsBybit]
 				}))
 			await self._handle_messages_Bybit(ws, exchange) # set up a message handler
+
+
+# BingX section --------------------------------------------------------------------------------
+	async def getSymbolsBingX(self):
+		"""BingX: get only USDT pairs, not from blacklist and volume24 filtered"""
+		global pairsBybit, pairsBingX, minLifeTime, minTurnover24h
+		async with aiohttp.ClientSession() as session:
+			async with session.get("https://open-api.bingx.com/openApi/swap/v2/quote/contracts") as resp:
+				data = await resp.json()
+				pairsBingX = []
+				now = int(time.time() * 1000)
+				for item in data.get("data", []):
+					symbol = item["symbol"].upper()
+					asset = item["asset"].upper()
+					# sorry, we have no 24h turnover here, no filtering
+					if item.get("currency", '') == "USDT" \
+						and asset not in coinBlacklist \
+						and asset not in coinBlacklistManual \
+						and now - int(item.get("launchTime", now)) > minLifeTime * 1000 \
+						and (len(pairsBybit) == 0 or symbol.replace('-', '') in pairsBybit):
+						pairsBingX.append(symbol) # like 'BTC-USDT'
+
+	async def _handle_messages_BingX(self, ws, exchange: str):
+		"""OKX websocket message handler"""
+		global pairsBingX, tickerSnapshotBingX, pairsBingXcontract, msgCountBingX, subscribedBingX, \
+			tickerBaseBingX, lastWarningBingX, time2resetBingX, pairsMaxPriceBingX, pairsMaxOIBingX, \
+			lastPriceLIQ, sideLIQ, alertPriceCh4ShortX, stepPrice, precisionPercent
+		async for message in ws:
+			msg = decompress_gzip(message)
+			if msg.get('dataType', '').endswith('@lastPrice'):
+				TGmessage = False
+				data = msg.get('data', {})
+				symbol = data.get('s', '') # like 'BTC-USDT'
+				price = data.get('c', 0)
+				ts = int(int(data.get("E", 0))/1000) # now in seconds
+
+				# init tickerSnapshotOKX and lastWarningOKX
+				if symbol not in tickerSnapshotBingX:
+					tickerSnapshotBingX[symbol] = {}
+					lastWarningBingX[symbol] = {'OI':0, 'price':0}
+				tickerSnapshotBingX[symbol]['lastPrice'] = price
+
+				# init tickerBase on 1st run
+				if symbol not in tickerBaseBingX:
+					tickerBaseBingX[symbol] = dict(tickerSnapshotBingX[symbol])
+
+				# init pairsMax
+				if symbol not in pairsMaxPriceBingX:
+					pairsMaxPriceBingX[symbol] = -1.
+
+				# IS IT TIME TO RENEW counters and candles (each screener can has its own timeframe!)
+				#	for counter
+				if ts>=time2resetBingX['counter']:
+					msgCountBingX = {} # reset counter
+					pairsMaxPriceBingX = {}
+					time2resetBingX['counter'] = int(ts - (ts % timeframeMsgCntBingX) + timeframeMsgCntBingX) # next reset
+				#	for Price
+				if ts>=time2resetBingX['price']:
+					tickerBaseBingX[symbol]['lastPrice'] = str(tickerSnapshotBingX[symbol]['lastPrice'])
+					time2resetBingX['price'] = int(ts - (ts % timeframePrice) + timeframePrice) # next reset
+
+				# check Price changes:
+				priceBase = float(tickerBaseBingX[symbol]["lastPrice"])
+				price = float(tickerSnapshotBingX[symbol]["lastPrice"])
+				precision = 0 if price>=10000 else 1 if price>=1000 else 6 if price<0.0001 else 4
+				priceChange = round(100 * (price - priceBase) / priceBase, precisionPercent)
+				priceChangeSign = sideMark['long'] if priceChange>0 else sideMark['short']
+				priceChangeSignTxt = '+' if priceChange>0 else '-'
+				x = 1. if priceChange >= 0 else alertPriceCh4ShortX # implement different settings for SHORT
+				if not longOnlyPrice: # both sides
+					priceChange = abs(priceChange)
+				if priceChange >= x * alertPriceChange \
+					and ts - lastWarningBingX[symbol]['price'] >= timeframePrice \
+					and priceChange > pairsMaxPriceBingX[symbol]:
+					if symbol not in msgCountBingX:
+						msgCountBingX[symbol] = 0
+					elif priceChange < pairsMaxPriceBingX[symbol] + stepPrice:
+						continue # not big enough
+					counter = msgCountBingX[symbol] = msgCountBingX[symbol] + 1
+					pairsMaxPriceBingX[symbol] = priceChange # may be abs
+					lastWarningBingX[symbol]['price'] = ts # omly 1 messsage in timeframePrice
+					# fire notification message
+					if counter <= maxMsgSameCoin:
+						URL = f"https://bingx.com/ru-ru/perpetual/{symbol}"
+						cgURL = f"coinglass.com/tv/ru/BingX_{symbol.upper()}"
+						linkText = f"{sideMark['long'] if priceChangeSignTxt == '+' else sideMark['short']}{symbol[:-5]}"
+						price_str = f"{price:.{precision}f}"
+						TGmessage = self._format_telegram_message('PR', exchange, URL, cgURL, linkText, price_str, f"{priceChange:.{precisionPercent}f}", priceChangeSignTxt, counter)
+
+				# send a notification (if not empty)
+				await self._notify(TGmessage)
+
 
 # OKX section ----------------------------------------------------------------------------------
 	async def getSymbolsOKX(self): # must run first!
@@ -194,7 +330,7 @@ class PumpOIliquidationScreener:
 						or symbol[:-10] in coinBlacklistManual \
 						or volume_24h<minTurnover24h:
 						continue
-					pairsOKX.append(symbol)
+					pairsOKX.append(symbol) # like 'BTC-USDT-SWAP'
 
 	async def getSymbolsOKXcontracts(self): # run after self.getSymbolsOKX; liquidations amount passing in contracts
 		"""Get contract prices at OKX, USDT pairs, not in  coinBlacklist"""
@@ -395,7 +531,7 @@ class PumpOIliquidationScreener:
 						or symbol[:-4] in coinBlacklistManual \
 						or volume_24h<minTurnover24h:
 						continue
-					pairsBybit.append(symbol)
+					pairsBybit.append(symbol) # like 'BTCUSDT'
 
 
 	async def _handle_messages_Bybit(self, ws, exchange: str):
@@ -573,6 +709,17 @@ async def main():
 	monitor = PumpOIliquidationScreener()
 	await monitor.start()
 
+def decompress_gzip(msg, showerror=0) -> dict: # return JSON
+	try:
+		if isinstance(msg, bytes):
+			decompressed = gzip.decompress(msg)
+			return json.loads(decompressed.decode('utf-8'))
+		else:
+			return json.loads(msg)
+	except Exception as e:
+		if showerror:
+			print("decompress_gzip() error:", e, msg)
+		return {}
 
 def get_topcap_cryptos(n=100):
 	"""Get TopCap-N from Coingecko"""
@@ -606,7 +753,6 @@ def tooYoungSymbolsBybit(minLifeTime):
 		symbol = item["symbol"].upper()[:-4] # no USDT tail
 		if int(item["launchTime"])/1000 > maxLaunchTime and symbol not in coinBlacklist:
 			coinBlacklist.append(symbol)
-
 
 def thousands(n):
 	"""Format number 1222333.2 to string 1'222'333"""
