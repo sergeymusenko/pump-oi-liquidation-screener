@@ -16,6 +16,10 @@ __date__	= "2025-05-31"
 __version__	= "0.2"
 __status__	= "dev"
 
+Exchanges = [
+	'OKX',
+	'Bybit',
+]
 
 ScreenerEvents = [ # screen these events, comment out to block
 	'OI',
@@ -59,8 +63,8 @@ timeframeMsgCntBybit = 3_600 # each N seconds reset the counter
 maxMsgSameCoin = 10 # show only firts N messags on same coin at same exchange
 
 # LIQ settings
-minLIQsizeUSD = 20_000  # min liq sixe, 15k+, USD
-sideLIQ = 'short' # 'short' / 'long' / 'long/short'
+minLIQsizeUSD = 30_000  # min liq sixe, 15k+, USD
+sideLIQ = 'both' # 'short' / 'long' / 'long/short'
 
 # notify via Telegram bot: Trading Monitor '@lightytrading_bot'
 useTelegram = True

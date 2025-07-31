@@ -116,12 +116,12 @@ class PumpOIliquidationScreener:
 
 	async def start(self):
 		"""Start monitoring"""
-		global pairsOKX, pairsOKXcontract, pairsBybit
+		global Exchange, pairsOKX, pairsOKXcontract, pairsBybit
 		# get symbols
 		await self.getSymbolsOKX()
 		await self.getSymbolsOKXcontracts()
 		await self.getSymbolsBybit()
-		# subscribe and listen
+		# subscribe Exchange websocket and listen
 		await asyncio.gather(
 			self._run_exchange_websocket('OKX'),
 			self._run_exchange_websocket('Bybit'),
@@ -129,13 +129,15 @@ class PumpOIliquidationScreener:
 
 	async def _run_exchange_websocket(self, exchange: str):
 		"""Exchanges Websocket connection/reconnection"""
-		while True: # reconnect loop
-			try:
-				async with websockets.connect(websocket_URLs[exchange], ping_timeout=50) as ws: # , ping_interval=None
-					await self._subscribe_to_channel(ws, exchange)
-			except Exception as e:
-				logger.error(f"{exchange}: Reconnect in 5s, {e}")
-				await asyncio.sleep(5)
+		global Exchanges
+		if exchange in Exchanges:
+			while True: # reconnect loop
+				try:
+					async with websockets.connect(websocket_URLs[exchange], ping_timeout=50) as ws: # , ping_interval=None
+						await self._subscribe_to_channel(ws, exchange)
+				except Exception as e:
+					logger.error(f"{exchange}: Reconnect in 5s, {e}")
+					await asyncio.sleep(5)
 
 	async def _subscribe_to_channel(self, ws, exchange: str):
 		"""Subscribe to a websocket"""
@@ -250,8 +252,8 @@ class PumpOIliquidationScreener:
 						URL = f"https://www.okx.com/ru/trade-swap/{symbol.lower()}-swap"
 						cgURL = f"https://www.coinglass.com/tv/ru/OKX_{symbol.upper()}-SWAP"
 						precision = 0 if price>=10000 else 1 if price>=1000 else 6 if price<0.0001 else 4
-						sideR = 'short' if side == 'long' else 'long' # reverse mark color
-						linkText = f"{sideMark[sideR]}{symbol[:-5]}"
+						#sideR = 'short' if side == 'long' else 'long' # reverse mark color
+						linkText = f"{sideMark[side]}{symbol[:-5]}"
 						price_str = f"{price:.{precision}f}"
 						nMark = f" 🧍{n}" if n > 1 else ''
 						TGmessage = self._format_telegram_message('LIQ', exchange, URL, cgURL, linkText, price_str, megaKilo(usd_size), '$', nMark, '', '')
