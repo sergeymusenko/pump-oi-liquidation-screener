@@ -3,7 +3,7 @@
 
 https://github.com/sergeymusenko/pump-oi-liquidation-screener
 
-Uses OKX and Bybit websockets public API to track in real time Price change,
+Uses OKX / Bybit / BingX websockets public API to track in real time Price change,
 Open Interest change and Liquidations on wide group of coins
 (excluding Top30 Marketcap, too young coins or manual blacklist).
 Constantly running script.
