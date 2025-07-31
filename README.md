@@ -1,5 +1,5 @@
 # pump-oi-liquidation-screener
-<b>Crypto Pump / Open Interest / Liquidations Screener. OKX, Bybit Crypto Exchanges.</b>
+<b>Crypto Pump / Open Interest / Liquidations Screener. OKX, Bybit, BingX Crypto Exchanges.</b>
 
 https://github.com/sergeymusenko/pump-oi-liquidation-screener
 
@@ -16,4 +16,4 @@ In Telegram message:
 <img src="telegram.png" alt="Telegram message">
 
 How to connect to Telegram: see instructions in `lib/simple_telegram.py` module.<br/>
-You can send to a group or to user account personally, set it up in `config.py`.
+You can send message to a group or to user account personally, set it up in `config.py`.
